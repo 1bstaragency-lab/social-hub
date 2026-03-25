@@ -13,12 +13,16 @@
   # No build step needed — pure HTML/CSS/JS
   command = ""
 
+[build.environment]
+  # Override runtime.txt so Netlify doesn't try to compile Python 3.11.0
+  PYTHON_VERSION = "3.11"
+
 # ── Proxy: forward all /api/* calls to your Python backend ───────────────────
 # This means the frontend never needs to know the backend URL — it just calls
 # /api/v1/... and Netlify transparently proxies it to Render.
 [[redirects]]
   from   = "/api/*"
-  to     = "https://YOUR_RENDER_APP.onrender.com/api/:splat"
+  to     = "https://social-hub-6cw4.onrender.com/api/:splat"
   status = 200
   force  = true
 
