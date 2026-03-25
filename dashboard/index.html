@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SC Hub — SoundCloud Manager</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔊</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg0:#09090b;--bg1:#0d0d10;--bg2:#13131a;--bg3:#1a1a22;--bg4:#20202a;
+  --bdr:#2a2a34;--bdr2:#1c1c26;
+  --t1:#f0f0f8;--t2:#a8a8bc;--t3:#6c6c84;--t4:#484860;
+  --acc:#ff5500;--acc2:rgba(255,85,0,.12);--acc3:rgba(255,85,0,.25);
+  --grn:#22c55e;--grn2:rgba(34,197,94,.12);
+  --red:#ef4444;--red2:rgba(239,68,68,.12);
+  --blu:#3b82f6;--blu2:rgba(59,130,246,.12);
+  --ylw:#eab308;--ylw2:rgba(234,179,8,.12);
+  --pur:#a855f7;--pur2:rgba(168,85,247,.12);
+  /* ── Silver / Chrome palette ── */
+  --slv:#c4c4d4;--slv2:#e0e0f0;--slv3:#9898b0;--slv4:#5a5a78;
+  --slv-a:rgba(196,196,212,.18);--slv-b:rgba(196,196,212,.07);--slv-c:rgba(196,196,212,.4);
+  --slv-g:linear-gradient(135deg,#e0e0f0 0%,#b4b4cc 25%,#ebebf8 50%,#b4b4cc 75%,#9090a8 100%);
+  --chrome-bdr:linear-gradient(135deg,rgba(220,220,240,.35) 0%,rgba(140,140,160,.08) 40%,rgba(200,200,220,.25) 100%);
+  --r:12px;--r2:8px;--r3:6px
+}
+
+/* ── Reset & base ────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg0);color:var(--t1);-webkit-font-smoothing:antialiased}
+::selection{background:var(--acc3);color:#fff}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--slv4);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--slv3)}
+
+/* ── Form elements ───────────────────────────────── */
+input,select,textarea{font-family:inherit;background:var(--bg0);border:1px solid var(--bdr);color:var(--t1);border-radius:var(--r2);padding:8px 12px;font-size:13px;transition:border .2s,box-shadow .2s;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--slv3);box-shadow:0 0 0 3px var(--slv-b)}
+input::placeholder,textarea::placeholder{color:var(--t4)}
+
+/* ── Buttons ─────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:inherit;font-size:13px;font-weight:500;padding:8px 16px;border-radius:var(--r2);border:none;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+/* Primary — SoundCloud orange */
+.btn-p{background:linear-gradient(180deg,#ff6a1a 0%,#e64d00 100%);color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.15) inset,0 3px 10px rgba(255,85,0,.25)}
+.btn-p:hover:not(:disabled){background:linear-gradient(180deg,#ff7c30 0%,#ff5500 100%);box-shadow:0 1px 0 rgba(255,255,255,.15) inset,0 4px 16px rgba(255,85,0,.35)}
+/* Secondary — chrome silver */
+.btn-s{background:linear-gradient(180deg,#26262e 0%,#18181f 100%);color:var(--slv);border:1px solid rgba(196,196,212,.2);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 2px 6px rgba(0,0,0,.35)}
+.btn-s:hover:not(:disabled){background:linear-gradient(180deg,#30303a 0%,#20202a 100%);border-color:rgba(196,196,212,.38);color:var(--slv2);box-shadow:0 1px 0 rgba(255,255,255,.09) inset,0 3px 10px rgba(0,0,0,.4)}
+/* Ghost */
+.btn-g{background:transparent;color:var(--t3)}.btn-g:hover{background:var(--bg4);color:var(--t1)}
+/* Danger */
+.btn-d{background:var(--red2);color:var(--red)}.btn-d:hover{background:rgba(239,68,68,.2)}
+
+/* ── Status badges ───────────────────────────────── */
+.bg{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;letter-spacing:.02em;padding:3px 10px;border-radius:20px}
+.bg-g{background:var(--grn2);color:var(--grn)}.bg-r{background:var(--red2);color:var(--red)}.bg-y{background:var(--ylw2);color:var(--ylw)}
+.bg-b{background:var(--blu2);color:var(--blu)}.bg-x{background:rgba(113,113,122,.12);color:var(--t3)}.bg-p{background:var(--pur2);color:var(--pur)}
+
+/* ── Chrome cards ────────────────────────────────── */
+.card{
+  background:var(--bg2);
+  border-radius:var(--r);
+  overflow:hidden;
+  position:relative;
+  /* Gradient border via box-shadow + transparent border trick */
+  border:1px solid transparent;
+  background-clip:padding-box;
+  box-shadow:
+    0 0 0 1px rgba(196,196,212,.14),
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 4px 20px rgba(0,0,0,.4);
+}
+/* Chrome top-edge highlight */
+.card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent 0%,rgba(220,220,240,.5) 25%,rgba(240,240,255,.8) 50%,rgba(220,220,240,.5) 75%,transparent 100%);
+  pointer-events:none;z-index:1;
+}
+
+/* ── Card headers ────────────────────────────────── */
+.card-h{
+  padding:16px 20px;
+  border-bottom:1px solid rgba(196,196,212,.09);
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(180deg,rgba(196,196,212,.05) 0%,transparent 100%);
+  position:relative;
+}
+.card-h h3{font-size:14px;font-weight:600;color:var(--slv2);letter-spacing:-.01em}
+
+/* ── Animations ──────────────────────────────────── */
+.spinner{border:2px solid var(--bdr);border-top-color:var(--slv);border-radius:50%;width:18px;height:18px;animation:spin .6s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes shimmer{0%{background-position:200% 50%}100%{background-position:-200% 50%}}
+
+/* ── Toasts ──────────────────────────────────────── */
+.toast{position:fixed;top:20px;right:20px;z-index:9999;padding:12px 18px;border-radius:var(--r2);font-size:13px;font-weight:500;box-shadow:0 10px 40px rgba(0,0,0,.6);animation:slideIn .3s ease;display:flex;align-items:center;gap:8px}
+.toast-s{background:#14532d;color:#86efac;border:1px solid rgba(34,197,94,.3)}.toast-e{background:#450a0a;color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+
+/* ── Table ───────────────────────────────────────── */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--slv4);padding:10px 16px}
+td{padding:12px 16px;font-size:13px;border-top:1px solid rgba(196,196,212,.06)}
+tbody tr{transition:background .1s}tbody tr:hover{background:rgba(196,196,212,.04)}
+
+/* ── Progress bars with shimmer ──────────────────── */
+.progress-bar{height:6px;border-radius:3px;background:rgba(196,196,212,.07);overflow:hidden;position:relative;box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+.progress-fill{
+  height:100%;border-radius:3px;transition:width .5s ease;
+  position:relative;overflow:hidden;
+}
+.progress-fill::after{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.35) 50%,transparent 100%);
+  background-size:200% 100%;
+  animation:shimmer 2s linear infinite;
+}
+
+/* ── Drop zones ──────────────────────────────────── */
+.drop-zone{border:2px dashed rgba(196,196,212,.2);border-radius:var(--r);padding:32px;text-align:center;cursor:pointer;transition:all .2s}
+.drop-zone:hover,.drop-zone.active{border-color:var(--slv3);background:var(--slv-b)}
+
+/* ── Chrome divider ──────────────────────────────── */
+.chrome-line{height:1px;background:linear-gradient(90deg,transparent,var(--slv-c) 50%,transparent);margin:0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useRef}=React;
+const API='/api/v1';
+async function api(p,o={}){const r=await fetch(`${API}${p}`,{headers:{'Content-Type':'application/json',...o.headers},...o,body:o.body?JSON.stringify(o.body):undefined});if(r.status===204)return null;return r.json()}
+async function upload(p,formData){const r=await fetch(`${API}${p}`,{method:'POST',body:formData});return r.json()}
+
+let _st;function showToast(m,t='s'){if(_st){const id=Date.now();_st(p=>[...p,{id,m,t}]);setTimeout(()=>_st(p=>p.filter(x=>x.id!==id)),3500)}}
+function Toasts(){const[t,s]=useState([]);_st=s;return(<div style={{display:'flex',flexDirection:'column',gap:8,position:'fixed',top:20,right:20,zIndex:9999}}>{t.map(x=><div key={x.id} className={`toast toast-${x.t}`}>{x.t==='s'?'✓':'✕'} {x.m}</div>)}</div>)}
+
+const SB={active:'bg-g',paused:'bg-y',needs_reauth:'bg-r',suspended:'bg-x',disabled:'bg-x',banned:'bg-r',logged_in:'bg-g'};
+const PB={active:'bg-g',dead:'bg-r',slow:'bg-y',banned:'bg-r'};
+const ACTIONS=[{v:'like',l:'Like',i:'♥'},{v:'unlike',l:'Unlike',i:'♡'},{v:'repost',l:'Repost',i:'↻'},{v:'unrepost',l:'Unrepost',i:'↺'},{v:'comment',l:'Comment',i:'💬'},{v:'follow',l:'Follow',i:'+'},{v:'unfollow',l:'Unfollow',i:'−'},{v:'play',l:'Play',i:'▶'},{v:'save',l:'Save',i:'★'},{v:'add_to_playlist',l:'Playlist',i:'☰'}];
+
+function Modal({children,onClose,wide}){
+  return(<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',backdropFilter:'blur(4px)',zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
+    <div style={{background:'var(--bg2)',borderRadius:'var(--r)',border:'1px solid rgba(196,196,212,.18)',boxShadow:'0 0 0 1px rgba(196,196,212,.08),0 20px 60px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06)',width:'100%',maxWidth:wide?640:480,maxHeight:'85vh',overflowY:'auto',animation:'slideIn .2s ease'}} onClick={e=>e.stopPropagation()}>{children}</div>
+  </div>)
+}
+
+function Num({n}){if(n==null)return '—';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toLocaleString()}
+
+function ProgressBar({pct,color,h=6}){
+  return(<div className="progress-bar" style={{height:h}}>
+    <div className="progress-fill" style={{width:`${Math.min(pct,100)}%`,background:color||'var(--acc)'}}/>
+  </div>)
+}
+
+// ── StatCard ────────────────────────────────────────────────────────────────
+function StatCard({icon,label,value,sub,color}){
+  return(<div style={{background:'linear-gradient(160deg,var(--bg2) 60%,rgba(196,196,212,.03) 100%)',borderRadius:'var(--r)',padding:'20px 24px',position:'relative',overflow:'hidden',border:'1px solid transparent',boxShadow:`0 0 0 1px rgba(196,196,212,.13),inset 0 1px 0 rgba(255,255,255,.04),0 4px 20px rgba(0,0,0,.4)`}}>
+    {/* Color accent strip */}
+    <div style={{position:'absolute',top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${color} 0%,${color}88 60%,transparent 100%)`}}/>
+    {/* Chrome highlight on top edge */}
+    <div style={{position:'absolute',top:2,left:0,right:0,height:1,background:'linear-gradient(90deg,transparent,rgba(220,220,240,.35) 50%,transparent)'}}/>
+    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+      <div style={{width:36,height:36,borderRadius:10,background:`${color}18`,border:`1px solid ${color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,boxShadow:`0 2px 8px ${color}20`}}>{icon}</div>
+      <span style={{fontSize:12,color:'var(--slv3)',fontWeight:500,letterSpacing:'.02em',textTransform:'uppercase'}}>{label}</span>
+    </div>
+    <div style={{fontSize:28,fontWeight:700,letterSpacing:'-.02em',background:'linear-gradient(135deg,var(--t1),var(--slv2))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}><Num n={value}/></div>
+    <div style={{fontSize:11,color:'var(--slv4)',marginTop:4}}>{sub}</div>
+  </div>)
+}
+
+// ── Add Account Modal ───────────────────────────────────────────────────────
+function AddAccountModal({onClose,onDone}){
+  const[mode,setMode]=useState('bulk');const[email,setEmail]=useState('');const[pw,setPw]=useState('');const[bulk,setBulk]=useState('');const[saving,setSaving]=useState(false);
+  const submit=async e=>{e.preventDefault();setSaving(true);try{if(mode==='bulk'){const r=await api('/accounts/',{method:'POST',body:{accounts_text:bulk}});showToast(`Imported ${r.added} accounts`)}else{await api('/accounts/',{method:'POST',body:{email,password:pw,auto_proxy:true}});showToast('Account added')}onDone();onClose()}catch(e){showToast('Failed','e')}setSaving(false)};
+  return(<Modal onClose={onClose}><div className="card-h"><h3>Import SoundCloud Accounts</h3><button className="btn btn-g" onClick={onClose} style={{padding:'4px 8px',fontSize:18}}>×</button></div>
+    <form onSubmit={submit} style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+      <div style={{display:'flex',gap:8}}>{['single','bulk'].map(m=><button key={m} type="button" onClick={()=>setMode(m)} className="btn" style={{flex:1,background:mode===m?'var(--acc2)':'var(--bg0)',color:mode===m?'var(--acc)':'var(--t3)',border:`1px solid ${mode===m?'var(--acc)':'var(--bdr)'}`}}>{m==='single'?'Single':'Bulk Import'}</button>)}</div>
+      {mode==='single'?<><div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Email</label><input required value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@example.com"/></div>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Password</label><input required type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••"/></div></>
+      :<div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Paste accounts — email:password per line</label>
+        <textarea required value={bulk} onChange={e=>setBulk(e.target.value)} rows={10} placeholder={"user1@email.com:pass123\nuser2@email.com:secret456"} style={{fontFamily:'monospace',fontSize:12,resize:'vertical',lineHeight:1.7}}/></div>}
+      <div style={{display:'flex',gap:8}}><button type="button" className="btn btn-s" onClick={onClose} style={{flex:1}}>Cancel</button><button type="submit" className="btn btn-p" disabled={saving} style={{flex:1}}>{saving?'Importing…':mode==='bulk'?'Import All':'Add Account'}</button></div>
+    </form></Modal>)
+}
+
+// ── Add Proxy Modal ─────────────────────────────────────────────────────────
+function AddProxyModal({onClose,onDone}){
+  const[mode,setMode]=useState('bulk');const[bulk,setBulk]=useState('');const[h,setH]=useState('');const[po,setPo]=useState('');const[pr,setPr]=useState('http');const[u,setU]=useState('');const[pw,setPw]=useState('');const[saving,setSaving]=useState(false);
+  const submit=async e=>{e.preventDefault();setSaving(true);try{if(mode==='bulk'){const r=await api('/proxies/',{method:'POST',body:{proxies_text:bulk}});showToast(`Imported ${r.added} proxies`)}else{await api('/proxies/',{method:'POST',body:{host:h,port:parseInt(po),protocol:pr,username:u||undefined,password:pw||undefined}});showToast('Proxy added')}onDone();onClose()}catch(e){showToast('Failed','e')}setSaving(false)};
+  return(<Modal onClose={onClose}><div className="card-h"><h3>Import Proxies</h3><button className="btn btn-g" onClick={onClose} style={{padding:'4px 8px',fontSize:18}}>×</button></div>
+    <form onSubmit={submit} style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+      <div style={{display:'flex',gap:8}}>{['single','bulk'].map(m=><button key={m} type="button" onClick={()=>setMode(m)} className="btn" style={{flex:1,background:mode===m?'var(--acc2)':'var(--bg0)',color:mode===m?'var(--acc)':'var(--t3)',border:`1px solid ${mode===m?'var(--acc)':'var(--bdr)'}`}}>{m==='single'?'Single':'Bulk Import'}</button>)}</div>
+      {mode==='single'?<><div style={{display:'grid',gridTemplateColumns:'1fr 2fr 1fr',gap:8}}>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Protocol</label><select value={pr} onChange={e=>setPr(e.target.value)}><option value="http">HTTP</option><option value="https">HTTPS</option><option value="socks4">SOCKS4</option><option value="socks5">SOCKS5</option></select></div>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Host</label><input required value={h} onChange={e=>setH(e.target.value)} placeholder="1.2.3.4"/></div>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Port</label><input required type="number" value={po} onChange={e=>setPo(e.target.value)} placeholder="8080"/></div></div></>
+      :<div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Paste proxies — one per line</label>
+        <textarea required value={bulk} onChange={e=>setBulk(e.target.value)} rows={10} placeholder={"http://1.2.3.4:8080\nsocks5://user:pass@5.6.7.8:1080"} style={{fontFamily:'monospace',fontSize:12,resize:'vertical',lineHeight:1.7}}/></div>}
+      <div style={{display:'flex',gap:8}}><button type="button" className="btn btn-s" onClick={onClose} style={{flex:1}}>Cancel</button><button type="submit" className="btn btn-p" disabled={saving} style={{flex:1}}>{saving?'Importing…':'Import'}</button></div>
+    </form></Modal>)
+}
+
+// ── Engagement Panel ────────────────────────────────────────────────────────
+function EngPanel({account,defAction,onClose}){
+  const[a,setA]=useState(defAction||'like');const[url,setUrl]=useState('');const[cm,setCm]=useState('');const[f,setF]=useState(false);
+  const submit=async e=>{e.preventDefault();setF(true);try{await api('/engagement/action',{method:'POST',body:{account_id:account.id,action_type:a,target_url:url||undefined,comment_text:cm||undefined}});showToast(`${a} queued`);onClose()}catch(e){showToast('Failed','e')}setF(false)};
+  return(<Modal onClose={onClose}><div className="card-h"><div><h3>Engagement</h3><p style={{fontSize:12,color:'var(--t3)',marginTop:2}}>{account.email}</p></div><button className="btn btn-g" onClick={onClose} style={{padding:'4px 8px',fontSize:18}}>×</button></div>
+    <form onSubmit={submit} style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6}}>{ACTIONS.map(x=><button key={x.v} type="button" onClick={()=>setA(x.v)} style={{padding:'10px 4px',borderRadius:'var(--r2)',border:`1px solid ${a===x.v?'var(--acc)':'var(--bdr)'}`,background:a===x.v?'var(--acc2)':'var(--bg0)',color:a===x.v?'var(--acc)':'var(--t3)',cursor:'pointer',textAlign:'center',fontSize:11,fontWeight:a===x.v?600:400,fontFamily:'inherit',transition:'all .15s'}}><div style={{fontSize:16,marginBottom:2}}>{x.i}</div>{x.l}</button>)}</div>
+      <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Target URL</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://soundcloud.com/artist/track"/></div>
+      {a==='comment'&&<div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Comment</label><textarea required value={cm} onChange={e=>setCm(e.target.value)} rows={2} style={{resize:'none'}}/></div>}
+      <div style={{display:'flex',gap:8}}><button type="button" className="btn btn-s" onClick={onClose} style={{flex:1}}>Cancel</button><button type="submit" className="btn btn-p" disabled={f} style={{flex:1}}>{f?'Sending…':`Run ${a}`}</button></div>
+    </form></Modal>)
+}
+
+// ── Bulk Modal ──────────────────────────────────────────────────────────────
+function BulkModal({accounts,onClose}){
+  const[sel,setSel]=useState([]);const[a,setA]=useState('like');const[url,setUrl]=useState('');const[cm,setCm]=useState('');const[f,setF]=useState(false);
+  const toggleAll=()=>setSel(sel.length===accounts.length?[]:accounts.map(x=>x.id));
+  const toggle=id=>setSel(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  const submit=async e=>{e.preventDefault();if(!sel.length)return showToast('Select accounts','e');setF(true);try{await api('/engagement/bulk',{method:'POST',body:{account_ids:sel,action_type:a,target_url:url||undefined,comment_text:cm||undefined}});showToast(`Bulk ${a} queued for ${sel.length}`);onClose()}catch(e){showToast('Failed','e')}setF(false)};
+  return(<Modal onClose={onClose} wide><div className="card-h"><h3>Bulk Engagement</h3><button className="btn btn-g" onClick={onClose} style={{padding:'4px 8px',fontSize:18}}>×</button></div>
+    <form onSubmit={submit} style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Action</label><select value={a} onChange={e=>setA(e.target.value)}>{ACTIONS.map(x=><option key={x.v} value={x.v}>{x.i} {x.l}</option>)}</select></div>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Target URL</label><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://soundcloud.com/…"/></div></div>
+      {a==='comment'&&<div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Comment</label><textarea value={cm} onChange={e=>setCm(e.target.value)} rows={2} style={{resize:'none'}}/></div>}
+      <div><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{fontSize:12,fontWeight:500,color:'var(--t3)'}}>Accounts ({sel.length}/{accounts.length})</span><button type="button" className="btn btn-g" onClick={toggleAll} style={{fontSize:11,padding:'4px 10px'}}>{sel.length===accounts.length?'Deselect':'Select All'}</button></div>
+        <div style={{border:'1px solid var(--bdr)',borderRadius:'var(--r2)',maxHeight:200,overflowY:'auto'}}>{accounts.map(x=><label key={x.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',cursor:'pointer',borderBottom:'1px solid var(--bdr2)',fontSize:13,color:'var(--t2)'}}><input type="checkbox" checked={sel.includes(x.id)} onChange={()=>toggle(x.id)} style={{width:'auto',accentColor:'var(--acc)'}}/><span style={{flex:1}}>{x.email}</span></label>)}</div></div>
+      <div style={{display:'flex',gap:8}}><button type="button" className="btn btn-s" onClick={onClose} style={{flex:1}}>Cancel</button><button type="submit" className="btn btn-p" disabled={f||!sel.length} style={{flex:1}}>Run on {sel.length}</button></div>
+    </form></Modal>)
+}
+
+// ── Dashboard Page ──────────────────────────────────────────────────────────
+function DashboardPage({dashboard:d}){
+  const eng=d.engagement_totals||{};
+  const totalEng=Object.values(eng).reduce((s,v)=>s+(v.completed||0),0);
+  const engActions=['like','repost','follow','play','comment'];
+  const engColors={'like':'var(--red)','repost':'var(--blu)','follow':'var(--grn)','play':'var(--pur)','comment':'var(--ylw)'};
+
+  return(<div style={{display:'flex',flexDirection:'column',gap:24,animation:'fadeIn .3s ease'}}>
+    {/* Stats row */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:14}}>
+      <StatCard icon="👥" label="Accounts" value={d.total_accounts} sub={`${d.logged_in_accounts||d.active_accounts} logged in`} color="var(--acc)"/>
+      <StatCard icon="📈" label="Followers" value={d.total_followers} sub={`${d.total_following?.toLocaleString()} following`} color="var(--pur)"/>
+      <StatCard icon="🎵" label="Tracks" value={d.total_tracks} sub={`${d.total_reposts?.toLocaleString()} reposts`} color="var(--blu)"/>
+      <StatCard icon="🌐" label="Proxies" value={d.total_proxies} sub={`${d.accounts_with_proxy} covered`} color="var(--grn)"/>
+      <StatCard icon="⚡" label="Engagements" value={totalEng} sub={`${d.pending_actions} pending`} color="var(--ylw)"/>
+    </div>
+
+    {/* Engagement progress + Task progress side by side */}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+      {/* Engagement totals */}
+      <div className="card">
+        <div className="card-h"><h3>Engagement Totals</h3><span style={{fontSize:12,color:'var(--t4)'}}>{totalEng.toLocaleString()} total</span></div>
+        <div style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+          {engActions.map(a=>{
+            const data=eng[a]||{completed:0,failed:0};
+            const maxVal=Math.max(...engActions.map(x=>(eng[x]?.completed||0)),1);
+            const pct=(data.completed/maxVal)*100;
+            return(<div key={a}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <span style={{fontSize:13,fontWeight:500,textTransform:'capitalize',color:'var(--t2)'}}>{a}</span>
+                <div style={{display:'flex',gap:8}}>
+                  <span style={{fontSize:13,fontWeight:600,color:'var(--t1)'}}>{data.completed.toLocaleString()}</span>
+                  {data.failed>0&&<span style={{fontSize:11,color:'var(--red)'}}>({data.failed} failed)</span>}
+                </div>
+              </div>
+              <ProgressBar pct={pct} color={engColors[a]} h={8}/>
+            </div>)
+          })}
+        </div>
+      </div>
+
+      {/* Task Groups (running + recent) */}
+      <div className="card">
+        <div className="card-h"><h3>Task Progress</h3><span style={{fontSize:12,color:'var(--t4)'}}>{d.task_groups?.length||0} tasks</span></div>
+        <div style={{padding:16,display:'flex',flexDirection:'column',gap:12,maxHeight:340,overflowY:'auto'}}>
+          {(d.task_groups||[]).map(tg=>{
+            const done=tg.completed_tasks+tg.failed_tasks;
+            const pct=tg.progress_pct;
+            const isRunning=tg.status==='running';
+            return(<div key={tg.id} style={{padding:14,background:'linear-gradient(160deg,var(--bg3),rgba(196,196,212,.03))',borderRadius:'var(--r2)',border:'1px solid rgba(196,196,212,.1)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.04)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{textTransform:'capitalize',fontSize:13,fontWeight:600,color:'var(--t1)'}}>{tg.action_type}</span>
+                  <span className={`bg ${isRunning?'bg-b':'bg-g'}`}>{isRunning?'Running':'Done'}</span>
+                </div>
+                <span style={{fontSize:12,color:'var(--t3)',fontWeight:500}}>{done}/{tg.total_tasks}</span>
+              </div>
+              <ProgressBar pct={pct} color={isRunning?'var(--blu)':'var(--grn)'} h={8}/>
+              <div style={{display:'flex',justifyContent:'space-between',marginTop:6}}>
+                <span style={{fontSize:11,color:'var(--t4)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:200}}>{tg.target_url}</span>
+                <div style={{display:'flex',gap:6}}>
+                  <span style={{fontSize:11,color:'var(--grn)'}}>{tg.completed_tasks} done</span>
+                  {tg.failed_tasks>0&&<span style={{fontSize:11,color:'var(--red)'}}>{tg.failed_tasks} failed</span>}
+                </div>
+              </div>
+            </div>)
+          })}
+          {!d.task_groups?.length&&<div style={{textAlign:'center',padding:32,color:'var(--t4)',fontSize:13}}>No tasks yet</div>}
+        </div>
+      </div>
+    </div>
+
+    {/* Account cards */}
+    <div className="card">
+      <div className="card-h"><h3>Accounts</h3><span style={{fontSize:12,color:'var(--t4)'}}>{d.account_summaries?.length} accounts</span></div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:1,background:'var(--bdr2)'}}>
+        {d.account_summaries?.map(a=>(
+          <div key={a.account_id} style={{padding:16,background:'linear-gradient(160deg,var(--bg2),rgba(196,196,212,.02))',display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid rgba(196,196,212,.07)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:42,height:42,borderRadius:12,background:'linear-gradient(135deg,#ff5500,#ff8800)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700,color:'#fff',flexShrink:0,boxShadow:'0 0 0 2px rgba(196,196,212,.2),0 3px 10px rgba(255,85,0,.3)'}}>{(a.display_name||a.username||'?')[0].toUpperCase()}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontWeight:600,fontSize:14}}>{a.display_name||a.username}</span>
+                  <span className={`bg ${SB[a.login_status]||SB[a.status]||'bg-x'}`} style={{fontSize:10}}>{a.login_status==='logged_in'?'Online':a.status}</span>
+                </div>
+                <div style={{fontSize:12,color:'var(--t3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>@{a.username} · {a.email}</div>
+              </div>
+            </div>
+            {a.bio&&<p style={{fontSize:12,color:'var(--t3)',lineHeight:1.5,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{a.bio}</p>}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4}}>
+              {[{l:'Followers',v:a.followers},{l:'Following',v:a.following},{l:'Tracks',v:a.tracks},{l:'Reposts',v:a.reposts}].map(s=>(
+                <div key={s.l} style={{textAlign:'center',padding:'8px 4px',background:'linear-gradient(180deg,rgba(196,196,212,.06) 0%,rgba(196,196,212,.02) 100%)',borderRadius:'var(--r3)',border:'1px solid rgba(196,196,212,.1)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.04)'}}>
+                  <div style={{fontSize:15,fontWeight:700,background:'linear-gradient(135deg,var(--t1),var(--slv2))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}><Num n={s.v}/></div>
+                  <div style={{fontSize:10,color:'var(--slv4)',marginTop:2}}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            {a.proxy&&<div style={{fontSize:11,color:'var(--t4)',fontFamily:'monospace',display:'flex',alignItems:'center',gap:4}}>🌐 {a.proxy}</div>}
+          </div>
+        ))}
+      </div>
+      {!d.account_summaries?.length&&<div style={{textAlign:'center',padding:48,color:'var(--t4)'}}>No accounts</div>}
+    </div>
+  </div>)
+}
+
+// ── Accounts Page ───────────────────────────────────────────────────────────
+function AccountsPage({accounts,reload}){
+  const[showAdd,setShowAdd]=useState(false);const[eng,setEng]=useState(null);const[filter,setFilter]=useState('');
+  const filtered=accounts.filter(a=>!filter||a.status===filter);
+  const del=async(id,em)=>{if(!confirm(`Remove ${em}?`))return;await api(`/accounts/${id}`,{method:'DELETE'});showToast('Removed');reload()};
+  return(<div style={{display:'flex',flexDirection:'column',gap:16,animation:'fadeIn .3s ease'}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}><select value={filter} onChange={e=>setFilter(e.target.value)} style={{width:'auto',padding:'6px 12px'}}><option value="">All</option>{['active','needs_reauth','paused','banned'].map(s=><option key={s} value={s}>{s}</option>)}</select><span style={{fontSize:12,color:'var(--t4)'}}>{filtered.length} accounts</span></div>
+      <button className="btn btn-p" onClick={()=>setShowAdd(true)}>+ Import Accounts</button>
+    </div>
+    <div className="card"><table><thead><tr><th>Account</th><th>Status</th><th>Followers</th><th>Tracks</th><th>Reposts</th><th>Proxy</th><th style={{textAlign:'right'}}>Actions</th></tr></thead><tbody>
+      {filtered.map(a=><tr key={a.id}>
+        <td><div style={{display:'flex',alignItems:'center',gap:10}}><div style={{width:32,height:32,borderRadius:8,background:'linear-gradient(135deg,#ff5500,#ff8800)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#fff',flexShrink:0,boxShadow:'0 0 0 1.5px rgba(196,196,212,.2),0 2px 6px rgba(255,85,0,.25)'}}>{(a.display_name||a.username||a.email)[0].toUpperCase()}</div><div><div style={{fontWeight:500}}>{a.display_name||a.username}</div><div style={{fontSize:11,color:'var(--t4)'}}>{a.email}</div></div></div></td>
+        <td><span className={`bg ${SB[a.login_status]||SB[a.status]||'bg-x'}`}>{a.login_status==='logged_in'?'Online':a.status}</span></td>
+        <td><Num n={a.follower_count}/></td><td><Num n={a.track_count}/></td><td><Num n={a.repost_count}/></td>
+        <td style={{fontFamily:'monospace',fontSize:12,color:'var(--t4)'}}>{a.proxy_host?`${a.proxy_protocol}://${a.proxy_host}:${a.proxy_port}`:'—'}</td>
+        <td style={{textAlign:'right'}}><div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
+          {['like','repost','follow'].map(act=><button key={act} className="btn btn-g" onClick={()=>setEng({account:a,defAction:act})} style={{padding:'4px 8px',fontSize:11,textTransform:'capitalize'}}>{act}</button>)}
+          <button className="btn btn-d" onClick={()=>del(a.id,a.email)} style={{padding:'4px 8px',fontSize:11}}>✕</button>
+        </div></td>
+      </tr>)}
+      {!filtered.length&&<tr><td colSpan={7} style={{textAlign:'center',padding:48,color:'var(--t4)'}}>No accounts</td></tr>}
+    </tbody></table></div>
+    {showAdd&&<AddAccountModal onClose={()=>setShowAdd(false)} onDone={reload}/>}
+    {eng&&<EngPanel account={eng.account} defAction={eng.defAction} onClose={()=>setEng(null)}/>}
+  </div>)
+}
+
+// ── Proxies Page ────────────────────────────────────────────────────────────
+function ProxiesPage({proxies,reload}){
+  const[showAdd,setShowAdd]=useState(false);const[busy,setBusy]=useState(false);
+  const doRand=async()=>{setBusy(true);try{const r=await api('/proxies/randomize',{method:'POST',body:{}});showToast(r.message);reload()}catch(e){showToast('Failed','e')}setBusy(false)};
+  const doClear=async()=>{if(!confirm('Clear assignments?'))return;await api('/proxies/clear',{method:'POST',body:{}});showToast('Cleared');reload()};
+  const doDel=async id=>{await api(`/proxies/${id}`,{method:'DELETE'});showToast('Removed');reload()};
+  const toggleSt=async(id,cur)=>{await api(`/proxies/${id}`,{method:'PATCH',body:{status:cur==='active'?'dead':'active'}});reload()};
+  return(<div style={{display:'flex',flexDirection:'column',gap:16,animation:'fadeIn .3s ease'}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+      <div style={{display:'flex',gap:12,alignItems:'center'}}><span style={{fontSize:13,color:'var(--t2)'}}><strong style={{color:'var(--t1)'}}>{proxies.length}</strong> proxies</span><span style={{width:1,height:16,background:'var(--bdr)'}}/>
+        <span style={{fontSize:13,color:'var(--t2)'}}><strong style={{color:'var(--grn)'}}>{proxies.filter(p=>p.status==='active').length}</strong> active</span></div>
+      <div style={{display:'flex',gap:8}}><button className="btn btn-s" onClick={doClear}>Clear</button><button className="btn btn-s" onClick={doRand} disabled={busy} style={{color:'var(--blu)'}}>{busy?'…':'🎲 Randomize'}</button><button className="btn btn-p" onClick={()=>setShowAdd(true)}>+ Import Proxies</button></div>
+    </div>
+    <div className="card"><table><thead><tr><th>Address</th><th>Protocol</th><th>Auth</th><th>Status</th><th>Accounts</th><th></th></tr></thead><tbody>
+      {proxies.map(p=><tr key={p.id}><td style={{fontFamily:'monospace',fontSize:13,fontWeight:500}}>{p.host}:{p.port}</td><td><span className="bg bg-x" style={{textTransform:'uppercase',fontSize:10}}>{p.protocol}</span></td><td style={{color:'var(--t4)',fontSize:12}}>{p.username?`${p.username}:•••`:'—'}</td>
+        <td><button onClick={()=>toggleSt(p.id,p.status)} className={`bg ${PB[p.status]||'bg-x'}`} style={{cursor:'pointer',border:'none',fontFamily:'inherit'}}>{p.status}</button></td>
+        <td style={{fontWeight:600,color:p.accounts_using?'var(--t1)':'var(--t4)'}}>{p.accounts_using}</td>
+        <td style={{textAlign:'right'}}><button className="btn btn-g" onClick={()=>doDel(p.id)} style={{padding:'4px 8px',fontSize:11,color:'var(--t4)'}}>Remove</button></td></tr>)}
+      {!proxies.length&&<tr><td colSpan={6} style={{textAlign:'center',padding:48,color:'var(--t4)'}}>No proxies</td></tr>}
+    </tbody></table></div>
+    {showAdd&&<AddProxyModal onClose={()=>setShowAdd(false)} onDone={reload}/>}
+  </div>)
+}
+
+// ── Upload Page ─────────────────────────────────────────────────────────────
+function UploadPage({accounts}){
+  const[uploads,setUploads]=useState([]);
+  const[accountId,setAccountId]=useState('');
+  const[title,setTitle]=useState('');
+  const[desc,setDesc]=useState('');
+  const[tags,setTags]=useState('');
+  const[genre,setGenre]=useState('');
+  const[privacy,setPrivacy]=useState('public');
+  const[audioFile,setAudioFile]=useState(null);
+  const[artworkFile,setArtworkFile]=useState(null);
+  const[useAvatar,setUseAvatar]=useState(true);
+  const[saving,setSaving]=useState(false);
+  const audioRef=useRef(null);
+  const artRef=useRef(null);
+
+  const loadUploads=useCallback(async()=>{setUploads(await api('/uploads/')||[])},[]);
+  useEffect(()=>{loadUploads()},[loadUploads]);
+
+  const selectedAccount=accounts.find(a=>a.id===accountId);
+
+  const submit=async e=>{
+    e.preventDefault();
+    if(!accountId){return showToast('Select an account','e')}
+    setSaving(true);
+    try{
+      const fd=new FormData();
+      fd.append('account_id',accountId);
+      fd.append('track_title',title);
+      fd.append('track_description',desc);
+      fd.append('tags',tags);
+      fd.append('genre',genre);
+      fd.append('privacy',privacy);
+      fd.append('use_account_avatar',useAvatar?'1':'0');
+      if(audioFile)fd.append('audio_file',audioFile);
+      else fd.append('audio_filename','pending.mp3');
+      if(artworkFile)fd.append('artwork_file',artworkFile);
+      const r=await upload('/uploads/',fd);
+      showToast(`Upload queued: ${title}`);
+      setTitle('');setDesc('');setTags('');setAudioFile(null);setArtworkFile(null);
+      loadUploads();
+    }catch(e){showToast('Upload failed','e')}
+    setSaving(false);
+  };
+
+  const delUpload=async id=>{await api(`/uploads/${id}`,{method:'DELETE'});showToast('Deleted');loadUploads()};
+
+  const upStatus={'pending':'bg-y','uploading':'bg-b','uploaded':'bg-g','failed':'bg-r','scheduled':'bg-p'};
+
+  return(<div style={{display:'grid',gridTemplateColumns:'400px 1fr',gap:20,animation:'fadeIn .3s ease'}}>
+    {/* Upload form */}
+    <form onSubmit={submit} className="card" style={{padding:20,display:'flex',flexDirection:'column',gap:14,alignSelf:'start'}}>
+      <h3 style={{fontSize:15,fontWeight:700}}>Upload to SoundCloud</h3>
+
+      <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Account</label>
+        <select required value={accountId} onChange={e=>setAccountId(e.target.value)}>
+          <option value="">Select account…</option>
+          {accounts.map(a=><option key={a.id} value={a.id}>{a.display_name||a.username} ({a.email})</option>)}
+        </select>
+        {selectedAccount&&<div style={{display:'flex',alignItems:'center',gap:8,marginTop:8,padding:10,background:'var(--bg0)',borderRadius:'var(--r2)'}}>
+          <div style={{width:28,height:28,borderRadius:7,background:'linear-gradient(135deg,#ff5500,#ff8800)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#fff'}}>{(selectedAccount.display_name||selectedAccount.username||'?')[0].toUpperCase()}</div>
+          <div><div style={{fontSize:12,fontWeight:600}}>{selectedAccount.display_name||selectedAccount.username}</div><div style={{fontSize:11,color:'var(--t4)'}}><Num n={selectedAccount.follower_count}/> followers</div></div>
+        </div>}
+      </div>
+
+      {/* Audio file drop zone */}
+      <div>
+        <label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Audio File</label>
+        <div className={`drop-zone${audioFile?' active':''}`} onClick={()=>audioRef.current?.click()}>
+          <input ref={audioRef} type="file" accept="audio/*" style={{display:'none'}} onChange={e=>{if(e.target.files[0])setAudioFile(e.target.files[0])}}/>
+          {audioFile?<div><div style={{fontSize:14,fontWeight:600,color:'var(--acc)',marginBottom:4}}>🎵 {audioFile.name}</div><div style={{fontSize:11,color:'var(--t4)'}}>{(audioFile.size/1024/1024).toFixed(1)} MB</div></div>
+          :<div><div style={{fontSize:24,marginBottom:8}}>🎵</div><div style={{fontSize:13,color:'var(--t3)'}}>Click to select audio file</div><div style={{fontSize:11,color:'var(--t4)',marginTop:4}}>MP3, WAV, FLAC, AAC, OGG</div></div>}
+        </div>
+      </div>
+
+      <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Track Title</label>
+        <input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="My New Track"/></div>
+
+      <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Description</label>
+        <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="Optional description…" style={{resize:'none'}}/></div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Tags (comma separated)</label>
+          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="hip-hop, beats, new"/></div>
+        <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Genre</label>
+          <select value={genre} onChange={e=>setGenre(e.target.value)}>
+            <option value="">Select…</option>
+            {['Hip-hop & Rap','Electronic','R&B & Soul','Pop','Rock','Latin','Dance & EDM','Ambient','Reggae','Classical','Jazz & Blues','Country','Metal','Soundtrack','World','Trap','Lo-fi','Dubstep','Drum & Bass','House'].map(g=><option key={g} value={g}>{g}</option>)}
+          </select></div>
+      </div>
+
+      {/* Artwork */}
+      <div>
+        <label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Artwork</label>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:12,color:'var(--t2)'}}>
+            <input type="checkbox" checked={useAvatar} onChange={e=>{setUseAvatar(e.target.checked);if(e.target.checked)setArtworkFile(null)}} style={{width:'auto',accentColor:'var(--acc)'}}/>
+            Use account profile pic
+          </label>
+        </div>
+        {!useAvatar&&<div className={`drop-zone${artworkFile?' active':''}`} style={{marginTop:8,padding:20}} onClick={()=>artRef.current?.click()}>
+          <input ref={artRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{if(e.target.files[0])setArtworkFile(e.target.files[0])}}/>
+          {artworkFile?<div style={{fontSize:13,color:'var(--acc)'}}>🎨 {artworkFile.name}</div>
+          :<div style={{fontSize:12,color:'var(--t3)'}}>Click to select artwork (JPG/PNG)</div>}
+        </div>}
+      </div>
+
+      <div><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Privacy</label>
+        <div style={{display:'flex',gap:8}}>{['public','private'].map(p=><button key={p} type="button" onClick={()=>setPrivacy(p)} className="btn" style={{flex:1,background:privacy===p?'var(--acc2)':'var(--bg0)',color:privacy===p?'var(--acc)':'var(--t3)',border:`1px solid ${privacy===p?'var(--acc)':'var(--bdr)'}`,textTransform:'capitalize'}}>{p}</button>)}</div>
+      </div>
+
+      <button type="submit" className="btn btn-p" disabled={saving} style={{width:'100%',padding:'10px 16px'}}>
+        {saving?'Uploading…':'🚀 Queue Upload'}
+      </button>
+    </form>
+
+    {/* Upload history */}
+    <div style={{display:'flex',flexDirection:'column',gap:12}}>
+      <h3 style={{fontSize:14,fontWeight:600,color:'var(--t2)'}}>Upload Queue ({uploads.length})</h3>
+      {uploads.map(u=>(
+        <div key={u.id} className="card" style={{padding:16,display:'flex',alignItems:'center',gap:16}}>
+          <div style={{width:48,height:48,borderRadius:8,background:u.artwork_filename?'var(--bg4)':'linear-gradient(135deg,#ff5500,#ff8800)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>🎵</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:14}}>{u.track_title}</div>
+            <div style={{fontSize:12,color:'var(--t3)',marginTop:2}}>{u.username||u.email} · {u.audio_filename} · {u.audio_size?(u.audio_size/1024/1024).toFixed(1)+'MB':'pending'}</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginTop:6}}>
+              <span className={`bg ${upStatus[u.status]||'bg-x'}`}>{u.status}</span>
+              {u.genre&&<span style={{fontSize:11,color:'var(--t4)'}}>{u.genre}</span>}
+              {u.tags&&JSON.parse(u.tags||'[]').length>0&&<span style={{fontSize:11,color:'var(--t4)'}}>{JSON.parse(u.tags).join(', ')}</span>}
+            </div>
+          </div>
+          <button className="btn btn-g" onClick={()=>delUpload(u.id)} style={{color:'var(--t4)',fontSize:12}}>Delete</button>
+        </div>
+      ))}
+      {!uploads.length&&<div style={{textAlign:'center',padding:48,color:'var(--t4)',fontSize:13}}>No uploads queued yet. Use the form to add tracks.</div>}
+    </div>
+  </div>)
+}
+
+// ── Campaigns Page ──────────────────────────────────────────────────────────
+function CampaignsPage({campaigns,reload}){
+  const[n,setN]=useState('');const[d,setD]=useState('');const[s,setS]=useState(false);
+  const sub=async e=>{e.preventDefault();setS(true);await api('/campaigns/',{method:'POST',body:{name:n,description:d}});showToast('Created');setN('');setD('');reload();setS(false)};
+  return(<div style={{display:'flex',flexDirection:'column',gap:16,animation:'fadeIn .3s ease'}}>
+    <form onSubmit={sub} className="card" style={{padding:20,display:'flex',gap:12,alignItems:'flex-end',flexWrap:'wrap'}}>
+      <div style={{flex:'1 1 200px'}}><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Name</label><input required value={n} onChange={e=>setN(e.target.value)} placeholder="Summer Push"/></div>
+      <div style={{flex:'1 1 200px'}}><label style={{display:'block',fontSize:12,fontWeight:500,color:'var(--t3)',marginBottom:6}}>Description</label><input value={d} onChange={e=>setD(e.target.value)} placeholder="Optional"/></div>
+      <button type="submit" className="btn btn-p" disabled={s}>+ Create</button></form>
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>{campaigns.map(c=><div key={c.id} className="card" style={{padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}><div><p style={{fontWeight:600,fontSize:14}}>{c.name}</p>{c.description&&<p style={{fontSize:12,color:'var(--t4)',marginTop:2}}>{c.description}</p>}</div><span className={`bg ${c.status==='active'?'bg-g':c.status==='paused'?'bg-y':'bg-x'}`}>{c.status}</span></div>)}
+      {!campaigns.length&&<div style={{textAlign:'center',padding:48,color:'var(--t4)',fontSize:13}}>No campaigns</div>}</div>
+  </div>)
+}
+
+// ── App ─────────────────────────────────────────────────────────────────────
+function App(){
+  const[page,setPage]=useState('dashboard');const[col,setCol]=useState(false);
+  const[dash,setDash]=useState(null);const[accs,setAccs]=useState([]);const[camps,setCamps]=useState([]);const[proxies,setProxies]=useState([]);const[showBulk,setShowBulk]=useState(false);
+  const load=useCallback(async()=>{const[d,a,c,p]=await Promise.all([api('/analytics/dashboard'),api('/accounts/'),api('/campaigns/'),api('/proxies/')]);setDash(d);setAccs(a||[]);setCamps(c||[]);setProxies(p||[])},[]);
+  useEffect(()=>{load();const iv=setInterval(load,30000);return()=>clearInterval(iv)},[load]);
+
+  const NAV=[
+    {k:'dashboard',l:'Dashboard',i:'📊'},
+    {k:'accounts',l:'Accounts',i:'👥'},
+    {k:'upload',l:'Upload',i:'🎵'},
+    {k:'proxies',l:'Proxies',i:'🌐'},
+    {k:'campaigns',l:'Campaigns',i:'📢'},
+  ];
+  const subs={dashboard:'Overview of all accounts and activity',accounts:'Manage SoundCloud accounts (email:password)',upload:'Upload audio tracks to SoundCloud',proxies:'Import proxies and randomize assignments',campaigns:'Organize engagement campaigns'};
+
+  return(<div style={{display:'flex',height:'100vh',overflow:'hidden',background:'var(--bg0)'}}>
+    <aside style={{width:col?64:220,background:'linear-gradient(180deg,var(--bg1) 0%,rgba(196,196,212,.02) 100%)',borderRight:'1px solid rgba(196,196,212,.1)',display:'flex',flexDirection:'column',transition:'width .2s',flexShrink:0,overflow:'hidden',boxShadow:'2px 0 12px rgba(0,0,0,.3)'}}>
+      <div style={{padding:'20px 16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid rgba(196,196,212,.12)',background:'linear-gradient(180deg,rgba(196,196,212,.04) 0%,transparent 100%)'}}>
+        <div style={{width:32,height:32,borderRadius:8,background:'linear-gradient(135deg,#d8d8e8 0%,#a0a0b8 35%,#f0f0ff 55%,#9090a8 100%)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 2px 8px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.4)'}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#ff5500"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+        </div>
+        {!col&&<div style={{overflow:'hidden'}}><div style={{fontWeight:700,fontSize:15,letterSpacing:'-.02em',background:'linear-gradient(135deg,#f0f0f8,#c0c0d8)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',whiteSpace:'nowrap'}}>SC Hub</div><div style={{fontSize:10,color:'var(--slv4)',whiteSpace:'nowrap'}}>SoundCloud Manager</div></div>}
+        <button onClick={()=>setCol(!col)} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--t4)',cursor:'pointer',padding:4,flexShrink:0}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
+      <nav style={{flex:1,padding:'12px 8px',display:'flex',flexDirection:'column',gap:2}}>
+        {NAV.map(n=><button key={n.k} onClick={()=>setPage(n.k)} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:col?'10px 0':'10px 12px',justifyContent:col?'center':'flex-start',borderRadius:'var(--r2)',fontSize:13,fontWeight:page===n.k?600:400,fontFamily:'inherit',border:'none',cursor:'pointer',transition:'all .15s',background:page===n.k?'linear-gradient(135deg,rgba(255,85,0,.1),rgba(196,196,212,.06))':'transparent',color:page===n.k?'var(--acc)':'var(--t3)',boxShadow:page===n.k?'inset 2px 0 0 var(--acc),inset 0 1px 0 rgba(196,196,212,.08)':'none'}}><span>{n.i}</span>{!col&&<span>{n.l}</span>}</button>)}
+      </nav>
+      {!col&&<div style={{padding:'12px 16px',borderTop:'1px solid rgba(196,196,212,.1)',fontSize:11,color:'var(--slv4)',background:'linear-gradient(0deg,rgba(196,196,212,.03) 0%,transparent 100%)'}}>v3.0 — SoundCloud Only</div>}
+    </aside>
+
+    <main style={{flex:1,overflowY:'auto'}}>
+      <div style={{padding:'16px 32px',borderBottom:'1px solid rgba(196,196,212,.1)',display:'flex',alignItems:'center',justifyContent:'space-between',background:'linear-gradient(180deg,var(--bg1) 60%,rgba(196,196,212,.02) 100%)',boxShadow:'0 1px 0 rgba(196,196,212,.06)'}}>
+        <div><h1 style={{fontSize:18,fontWeight:700,letterSpacing:'-.02em'}}>{NAV.find(n=>n.k===page)?.l}</h1><p style={{fontSize:12,color:'var(--t4)',marginTop:2}}>{subs[page]}</p></div>
+        {(page==='dashboard'||page==='accounts')&&<button className="btn btn-p" onClick={()=>setShowBulk(true)}>⚡ Bulk Action</button>}
+      </div>
+      <div style={{padding:32,maxWidth:1400}}>
+        {page==='dashboard'&&dash&&<DashboardPage dashboard={dash}/>}
+        {page==='accounts'&&<AccountsPage accounts={accs} reload={load}/>}
+        {page==='upload'&&<UploadPage accounts={accs}/>}
+        {page==='proxies'&&<ProxiesPage proxies={proxies} reload={load}/>}
+        {page==='campaigns'&&<CampaignsPage campaigns={camps} reload={load}/>}
+        {!dash&&page==='dashboard'&&<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'var(--t4)',gap:10}}><div className="spinner"/> Loading…</div>}
+      </div>
+    </main>
+    {showBulk&&<BulkModal accounts={accs} onClose={()=>setShowBulk(false)}/>}
+    <Toasts/>
+  </div>)
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

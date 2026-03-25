@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SC Hub — Render.com deployment config
+# Push this repo to GitHub, then at https://render.com click
+# "New Web Service" → "Connect a repository" → it auto-reads this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: sc-hub-backend
+    runtime: python
+    plan: free          # upgrade to "starter" ($7/mo) for always-on + disk
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+
+    # Environment variables
+    envVars:
+      - key: PORT
+        value: 10000       # Render assigns this automatically; leave as-is
+      - key: RUNTIME_DIR
+        value: /opt/render/project/data   # persistent disk mount point
+      - key: ENCRYPTION_KEY
+        generateValue: true              # Render auto-generates a random secret
+
+    # Persistent disk — keeps SQLite DB + cookies across deploys
+    # Comment out if you're on the free plan (free plan doesn't support disk;
+    # data resets on each deploy, but the app still works).
+    disk:
+      name: sc-hub-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1

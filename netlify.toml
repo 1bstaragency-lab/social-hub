@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SC Hub — Netlify configuration
+#
+# SETUP (2 steps):
+#   1. Deploy the backend to Render first (see render.yaml / README below)
+#   2. Paste your Render backend URL in the [[redirects]] block below
+#      replacing  https://YOUR_RENDER_APP.onrender.com
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build]
+  # Static files live in /dashboard — Netlify serves this folder
+  publish = "dashboard"
+  # No build step needed — pure HTML/CSS/JS
+  command = ""
+
+# ── Proxy: forward all /api/* calls to your Python backend ───────────────────
+# This means the frontend never needs to know the backend URL — it just calls
+# /api/v1/... and Netlify transparently proxies it to Render.
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://YOUR_RENDER_APP.onrender.com/api/:splat"
+  status = 200
+  force  = true
+
+  # Uncomment and set if your backend requires an auth header:
+  # [redirects.headers]
+  #   X-Api-Key = "your-secret-key"
+
+# ── SPA fallback — serve index.html for any unknown path ─────────────────────
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ── Security headers ──────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
