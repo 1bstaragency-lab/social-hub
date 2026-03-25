@@ -1,0 +1,14 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /oauth-server ./cmd/server
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /oauth-server /oauth-server
+
+EXPOSE 8090
+CMD ["/oauth-server"]
