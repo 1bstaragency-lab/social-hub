@@ -636,25 +636,37 @@ class AccountDetailHandler(APIHandler):
 
 
 class AccountHealthCheckHandler(APIHandler):
+    """POST /api/v1/accounts/<id>/health-check — refresh profile stats for one account."""
     def post(self, aid):
         db = get_db()
-        now = datetime.now(timezone.utc).isoformat()
-        db.execute("UPDATE accounts SET last_health_check = ? WHERE id = ?", (now, aid))
-        db.commit()
+        row = db.execute("SELECT * FROM accounts WHERE id=?", (aid,)).fetchone()
+        if not row:
+            db.close()
+            return self.write_json({"detail": "Not found"}, 404)
+        acc = row_to_dict(row)
         db.close()
-        self.write_json({"account_id": aid, "checked": now})
+        meta = json.loads(acc.get("metadata") or "{}")
+        oauth_token = meta.get("oauth_token")
+        _login_executor.submit(_run_refresh, aid, acc["cookie_file"], oauth_token)
+        self.write_json({"account_id": aid, "status": "refresh_queued"})
 
 
 class HealthCheckAllHandler(APIHandler):
+    """POST /api/v1/accounts/health-check/all — refresh all logged-in accounts."""
     def post(self):
         db = get_db()
-        now = datetime.now(timezone.utc).isoformat()
-        accounts = db.execute("SELECT id FROM accounts").fetchall()
+        accounts = db.execute(
+            "SELECT id, cookie_file, metadata FROM accounts "
+            "WHERE login_status IN ('logged_in', 'failed', 'not_logged_in') AND status != 'disabled'"
+        ).fetchall()
+        queued = 0
         for acc in accounts:
-            db.execute("UPDATE accounts SET last_health_check = ? WHERE id = ?", (now, acc["id"]))
-        db.commit()
+            meta = json.loads(acc["metadata"] or "{}")
+            oauth_token = meta.get("oauth_token")
+            _login_executor.submit(_run_refresh, acc["id"], acc["cookie_file"], oauth_token)
+            queued += 1
         db.close()
-        self.write_json({"message": f"Checked {len(accounts)} accounts"})
+        self.write_json({"queued": queued, "message": f"Profile refresh queued for {queued} accounts"})
 
 
 # ── SoundCloud Login (Playwright) ────────────────────────────────────────────
@@ -751,8 +763,32 @@ async def _playwright_sc_login(email, password, cookie_file):
             with open(cookie_file, "w") as f:
                 json.dump(cookies, f)
 
+            # ── Scrape profile data from authenticated session ──────────────
+            profile = None
+            oauth_token = None
+            try:
+                await page.goto("https://soundcloud.com/me", timeout=15000)
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                result_data = await page.evaluate("""() => {
+                    const h = window.__sc_hydration;
+                    const me = h ? h.find(e => e.hydratable === 'me')?.data : null;
+                    // Try to extract OAuth token from cookies or localStorage
+                    const token = (
+                        document.cookie.match(/oauth_token=([^;]+)/)?.[1] ||
+                        localStorage.getItem('oauth_token') ||
+                        localStorage.getItem('sc:access_token') ||
+                        localStorage.getItem('sc_access_token') ||
+                        null
+                    );
+                    return { profile: me, token };
+                }""")
+                profile = result_data.get("profile") if result_data else None
+                oauth_token = result_data.get("token") if result_data else None
+            except Exception as pe:
+                logging.warning(f"[login] profile scrape failed: {pe}")
+
             await ctx.close()
-            return {"success": True, "cookies": len(cookies)}
+            return {"success": True, "cookies": len(cookies), "profile": profile, "oauth_token": oauth_token}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
         finally:
@@ -772,14 +808,230 @@ def _run_login(account_id, email, password, cookie_file):
 
     db = get_db()
     if result.get("success"):
+        p = result.get("profile") or {}
+        # SoundCloud API fields: permalink=URL slug, username=display name
+        username     = p.get("permalink")          # e.g. "john-doe"
+        display_name = p.get("username")           # e.g. "John Doe"
+        avatar_url   = p.get("avatar_url") or ""
+        if avatar_url and "-large." in avatar_url:
+            avatar_url = avatar_url.replace("-large.", "-t500x500.")  # get bigger image
+        bio          = p.get("description")
+        profile_url  = p.get("permalink_url")
+        city         = p.get("city")
+        followers    = p.get("followers_count")
+        following    = p.get("followings_count")
+        track_count  = p.get("track_count")
+        reposts      = p.get("reposts_count")
+        likes        = p.get("likes_count")
+        is_verified  = 1 if p.get("verified") else 0
+        # Store oauth_token in metadata JSON for lightweight API calls later
+        oauth_token  = result.get("oauth_token")
+           meta = {"oauth_token": oauth_token} if oauth_token else {}
+
         db.execute(
-            "UPDATE accounts SET login_status='logged_in', last_login_at=? WHERE id=?",
-            (datetime.now(timezone.utc).isoformat(), account_id),
+            """UPDATE accounts SET
+               login_status   = 'logged_in',
+               last_login_at  = ?,
+               username       = COALESCE(?, username),
+               display_name   = COALESCE(?, display_name),
+               avatar_url     = COALESCE(NULLIF(?,  ''), avatar_url),
+               bio            = COALESCE(?, bio),
+               profile_url    = COALESCE(?, profile_url),
+               city           = COALESCE(?, city),
+               follower_count = COALESCE(?, follower_count),
+               following_count= COALESCE(?, following_count),
+               track_count    = COALESCE(?, track_count),
+               repost_count   = COALESCE(?, repost_count),
+               likes_count    = COALESCE(?, likes_count),
+               is_verified    = ?,
+               metadata       = json_patch(COALESCE(metadata,'{}'), ?)
+             WHERE id = ?""",
+            (
+                datetime.now(timezone.utc).isoformat(),
+                username, display_name, avatar_url, bio, profile_url, city,
+                followers, following, track_count, reposts, likes,
+                is_verified, json.dumps(meta),
+                account_id,
+            ),
         )
-        logging.info(f"[login] {account_id} OK ({result.get('cookies', 0)} cookies)")
+        logging.info(
+            f"[login] {account_id} OK  @{username or '?'}  "
+            f"followers:{followers or 0}  tracks:{track_count or 0}"
+        )
     else:
         db.execute("UPDATE accounts SET login_status='failed' WHERE id=?", (account_id,))
         logging.warning(f"[login] {account_id} FAILED: {result.get('error')}")
+    db.commit()
+    db.close()
+    return result
+
+
+async def _playwright_sc_refresh(account_id, cookie_file, oauth_token=None):
+    """
+    Refresh profile data for an already-logged-in account.
+    1. If we have an oauth_token, use the lightweight REST API (no browser needed).
+    2. Otherwise, load saved cookies in headless Chromium and navigate to /me.
+    Returns dict {success, profile, session_valid, error}.
+    """
+    import urllib.request, urllib.error
+
+    # ── Fast path: OAuth token REST call ─────────────────────────────────────
+    if oauth_token:
+        try:
+            req = urllib.request.Request(
+                "https://api.soundcloud.com/me",
+                headers={
+                    "Authorization": f"OAuth {oauth_token}",
+                    "Accept": "application/json; charset=utf-8",
+                    "User-Agent": "Mozilla/5.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            return {"success": True, "profile": data, "session_valid": True}
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                # Token expired — fall through to Playwright
+                logging.info(f"[refresh] {account_id} token expired, trying cookies")
+            else:
+                return {"success": False, "error": f"HTTP {e.code}", "session_valid": False}
+        except Exception as e:
+            logging.warning(f"[refresh] {account_id} API error: {e}")
+
+    # ── Slow path: Playwright with saved cookies ──────────────────────────────
+    if not Path(cookie_file).exists():
+        return {"success": False, "error": "no_cookie_file", "session_valid": False}
+
+    try:
+        cookies = json.loads(Path(cookie_file).read_text())
+    except Exception:
+        return {"success": False, "error": "bad_cookie_file", "session_valid": False}
+
+    from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+                  "--disable-setuid-sandbox", "--single-process"],
+        )
+        try:
+            ctx = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+            )
+            await ctx.add_cookies(cookies)
+            await ctx.add_init_script(
+                "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
+            )
+            page = await ctx.new_page()
+            await page.goto("https://soundcloud.com/me", timeout=20000)
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+
+            current_url = page.url
+            if "signin" in current_url or "login" in current_url:
+                return {"success": False, "error": "session_expired", "session_valid": False}
+
+            result_data = await page.evaluate("""() => {
+                const h = window.__sc_hydration;
+                const me = h ? h.find(e => e.hydratable === 'me')?.data : null;
+                const token = (
+                    document.cookie.match(/oauth_token=([^;]+)/)?.[1] ||
+                    localStorage.getItem('oauth_token') ||
+                    localStorage.getItem('sc:access_token') ||
+                    null
+                );
+                return { profile: me, token };
+            }""")
+            profile    = result_data.get("profile") if result_data else None
+            new_token  = result_data.get("token")   if result_data else None
+            if not profile:
+                return {"success": False, "error": "no_profile_data", "session_valid": True}
+            return {"success": True, "profile": profile, "session_valid": True,
+                    "new_token": new_token}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "session_valid": False}
+        finally:
+            await browser.close()
+
+
+def _run_refresh(account_id, cookie_file, oauth_token=None):
+    """Thread worker — refresh profile stats for one account."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(
+            _playwright_sc_refresh(account_id, cookie_file, oauth_token)
+        )
+    except Exception as exc:
+        result = {"success": False, "error": str(exc), "session_valid": False}
+    finally:
+        loop.close()
+
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    if result.get("success"):
+        p = result.get("profile") or {}
+        avatar_url = p.get("avatar_url") or ""
+        if avatar_url and "-large." in avatar_url:
+            avatar_url = avatar_url.replace("-large.", "-t500x500.")
+        meta_patch = {}
+        if result.get("new_token"):
+            meta_patch["oauth_token"] = result["new_token"]
+        db.execute(
+            """UPDATE accounts SET
+               last_health_check = ?,
+               username          = COALESCE(?, username),
+               display_name      = COALESCE(?, display_name),
+               avatar_url        = COALESCE(NULLIF(?, ''), avatar_url),
+               bio               = COALESCE(?, bio),
+               profile_url       = COALESCE(?, profile_url),
+               city              = COALESCE(?, city),
+               follower_count    = COALESCE(?, follower_count),
+               following_count   = COALESCE(?, following_count),
+               track_count       = COALESCE(?, track_count),
+               repost_count      = COALESCE(?, repost_count),
+               likes_count       = COALESCE(?, likes_count),
+               is_verified       = ?,
+               metadata          = CASE WHEN ? != '{}' THEN json_patch(COALESCE(metadata,'{}'), ?) ELSE COALESCE(metadata,'{}') END
+             WHERE id = ?""",
+            (
+                now,
+                p.get("permalink"), p.get("username"),
+                avatar_url, p.get("description"), p.get("permalink_url"),
+                p.get("city"),
+                p.get("followers_count"), p.get("followings_count"),
+                p.get("track_count"), p.get("reposts_count"),
+                p.get("likes_count"),
+                1 if p.get("verified") else 0,
+                json.dumps(meta_patch), json.dumps(meta_patch),
+                account_id,
+            ),
+        )
+        logging.info(
+            f"[refresh] {account_id} OK  @{p.get('permalink','?')}  "
+            f"followers:{p.get('followers_count', 0)}"
+        )
+    else:
+        # Session expired — mark for re-auth
+        if not result.get("session_valid"):
+            db.execute(
+                "UPDATE accounts SET login_status='failed', status='needs_reauth', "
+                "last_health_check=? WHERE id=?",
+                (now, account_id),
+            )
+            logging.warning(f"[refresh] {account_id} session expired → needs_reauth")
+        else:
+            db.execute(
+                "UPDATE accounts SET last_health_check=? WHERE id=?",
+                (now, account_id),
+            )
+            logging.warning(f"[refresh] {account_id} refresh error: {result.get('error')}")
+
     db.commit()
     db.close()
     return result
@@ -995,254 +1247,4 @@ class UploadsHandler(APIHandler):
         db.commit()
 
         row = db.execute("SELECT * FROM uploads WHERE id = ?", (uid,)).fetchone()
-        db.close()
-        logger.info(f"Upload queued: {track_title} for account {account_id}")
-        self.write_json(row_to_dict(row), 201)
-
-
-class UploadDetailHandler(APIHandler):
-    def get(self, uid):
-        db = get_db()
-        row = db.execute("SELECT u.*, a.email, a.username FROM uploads u JOIN accounts a ON u.account_id = a.id WHERE u.id = ?", (uid,)).fetchone()
-        db.close()
-        if not row:
-            return self.write_json({"detail": "Not found"}, 404)
-        self.write_json(row_to_dict(row))
-
-    def delete(self, uid):
-        db = get_db()
-        upload = db.execute("SELECT audio_path, artwork_path FROM uploads WHERE id = ?", (uid,)).fetchone()
-        if upload:
-            for path in (upload["audio_path"], upload["artwork_path"]):
-                if path and os.path.exists(path):
-                    os.remove(path)
-        db.execute("DELETE FROM uploads WHERE id = ?", (uid,))
-        db.commit()
-        db.close()
-        self.set_status(204)
-        self.finish()
-
-
-# ── Task Group / Engagement ──────────────────────────────────────────────────
-
-class TaskGroupsHandler(APIHandler):
-    """List all task groups with progress info."""
-    def get(self):
-        db = get_db()
-        status_filter = self.get_argument("status", None)
-        q = "SELECT * FROM task_groups"
-        params = []
-        if status_filter:
-            q += " WHERE status = ?"
-            params.append(status_filter)
-        q += " ORDER BY created_at DESC LIMIT 50"
-        rows = db.execute(q, params).fetchall()
-        result = []
-        for r in rows:
-            d = row_to_dict(r)
-            d["progress_pct"] = round((d["completed_tasks"] + d["failed_tasks"]) / max(d["total_tasks"], 1) * 100, 1)
-            result.append(d)
-        db.close()
-        self.write_json(result)
-
-
-class TaskGroupDetailHandler(APIHandler):
-    def get(self, gid):
-        db = get_db()
-        group = db.execute("SELECT * FROM task_groups WHERE id = ?", (gid,)).fetchone()
-        if not group:
-            db.close()
-            return self.write_json({"detail": "Not found"}, 404)
-        d = row_to_dict(group)
-        tasks = db.execute(
-            """SELECT e.*, a.email, a.username FROM engagement_actions e
-               JOIN accounts a ON e.account_id = a.id WHERE e.task_group_id = ?
-               ORDER BY e.status""", (gid,)
-        ).fetchall()
-        d["tasks"] = rows_to_list(tasks)
-        d["progress_pct"] = round((d["completed_tasks"] + d["failed_tasks"]) / max(d["total_tasks"], 1) * 100, 1)
-        db.close()
-        self.write_json(d)
-
-
-class EngagementActionHandler(APIHandler):
-    def post(self):
-        data = self.get_json_body()
-        db = get_db()
-        eid = str(uuid.uuid4())
-        db.execute(
-            """INSERT INTO engagement_actions (id, account_id, action_type, target_url, target_id, comment_text, playlist_id, status) VALUES (?,?,?,?,?,?,?,?)""",
-            (eid, data["account_id"], data["action_type"], data.get("target_url"),
-             data.get("target_id"), data.get("comment_text"), data.get("playlist_id"), "pending"))
-        db.execute("INSERT INTO activity_logs (id, account_id, action, description, status) VALUES (?,?,?,?,?)",
-            (str(uuid.uuid4()), data["account_id"], f"engagement.{data['action_type']}",
-             f"{data['action_type']} on {data.get('target_url', 'unknown')}", "queued"))
-        db.commit()
-        db.close()
-        self.write_json({"task_id": eid, "status": "queued"})
-
-
-class BulkEngagementHandler(APIHandler):
-    def post(self):
-        data = self.get_json_body()
-        db = get_db()
-        account_ids = data.get("account_ids", [])
-
-        # Create task group
-        gid = str(uuid.uuid4())
-        db.execute(
-            "INSERT INTO task_groups (id, action_type, target_url, comment_text, total_tasks, status) VALUES (?,?,?,?,?,?)",
-            (gid, data["action_type"], data.get("target_url"), data.get("comment_text"), len(account_ids), "running"),
-        )
-
-        for acc_id in account_ids:
-            eid = str(uuid.uuid4())
-            db.execute(
-                "INSERT INTO engagement_actions (id, task_group_id, account_id, action_type, target_url, comment_text, status) VALUES (?,?,?,?,?,?,'pending')",
-                (eid, gid, acc_id, data["action_type"], data.get("target_url"), data.get("comment_text")),
-            )
-        db.commit()
-        db.close()
-        self.write_json({"task_group_id": gid, "status": "running", "total": len(account_ids)})
-
-
-class EngagementStatsHandler(APIHandler):
-    """Global engagement stats across all accounts."""
-    def get(self):
-        db = get_db()
-        rows = db.execute("""
-            SELECT action_type, SUM(total_completed) as completed, SUM(total_failed) as failed
-            FROM engagement_stats GROUP BY action_type ORDER BY completed DESC
-        """).fetchall()
-        db.close()
-        self.write_json(rows_to_list(rows))
-
-
-# ── Analytics / Dashboard ────────────────────────────────────────────────────
-
-class DashboardHandler(APIHandler):
-    def get(self):
-        db = get_db()
-        total = db.execute("SELECT COUNT(*) as c FROM accounts").fetchone()["c"]
-        active = db.execute("SELECT COUNT(*) as c FROM accounts WHERE status='active'").fetchone()["c"]
-        logged_in = db.execute("SELECT COUNT(*) as c FROM accounts WHERE login_status='logged_in'").fetchone()["c"]
-        reauth = db.execute("SELECT COUNT(*) as c FROM accounts WHERE status='needs_reauth'").fetchone()["c"]
-        followers = db.execute("SELECT COALESCE(SUM(follower_count),0) as c FROM accounts").fetchone()["c"]
-        total_following = db.execute("SELECT COALESCE(SUM(following_count),0) as c FROM accounts").fetchone()["c"]
-        total_tracks = db.execute("SELECT COALESCE(SUM(track_count),0) as c FROM accounts").fetchone()["c"]
-        total_reposts = db.execute("SELECT COALESCE(SUM(repost_count),0) as c FROM accounts").fetchone()["c"]
-        scheduled = db.execute("SELECT COUNT(*) as c FROM posts WHERE status='scheduled'").fetchone()["c"]
-        pending_eng = db.execute("SELECT COUNT(*) as c FROM engagement_actions WHERE status='pending'").fetchone()["c"]
-        total_proxies = db.execute("SELECT COUNT(*) as c FROM proxies WHERE status='active'").fetchone()["c"]
-        accounts_with_proxy = db.execute("SELECT COUNT(*) as c FROM accounts WHERE proxy_id IS NOT NULL").fetchone()["c"]
-
-        # Engagement totals
-        eng_stats = db.execute("""
-            SELECT action_type, SUM(total_completed) as completed, SUM(total_failed) as failed
-            FROM engagement_stats GROUP BY action_type
-        """).fetchall()
-        engagement_totals = {s["action_type"]: {"completed": s["completed"], "failed": s["failed"]} for s in eng_stats}
-
-        # Running task groups
-        running_tasks = db.execute("SELECT * FROM task_groups WHERE status = 'running' ORDER BY created_at DESC").fetchall()
-        recent_completed = db.execute("SELECT * FROM task_groups WHERE status = 'completed' ORDER BY created_at DESC LIMIT 5").fetchall()
-
-        task_groups_data = []
-        for tg in list(running_tasks) + list(recent_completed):
-            d = row_to_dict(tg)
-            d["progress_pct"] = round((d["completed_tasks"] + d["failed_tasks"]) / max(d["total_tasks"], 1) * 100, 1)
-            task_groups_data.append(d)
-
-        # Account summaries with rich data
-        accounts = db.execute("""
-            SELECT a.*, p.host as proxy_host, p.port as proxy_port, p.protocol as proxy_protocol
-            FROM accounts a LEFT JOIN proxies p ON a.proxy_id = p.id
-            ORDER BY a.follower_count DESC LIMIT 50
-        """).fetchall()
-        summaries = []
-        for acc in accounts:
-            a = row_to_dict(acc)
-            proxy_str = f"{a.get('proxy_protocol','http')}://{a['proxy_host']}:{a['proxy_port']}" if a.get("proxy_host") else None
-            summaries.append({
-                "account_id": a["id"], "email": a["email"], "username": a["username"],
-                "display_name": a.get("display_name"), "bio": a.get("bio"),
-                "profile_url": a.get("profile_url"), "city": a.get("city"),
-                "status": a["status"], "login_status": a.get("login_status"),
-                "followers": a["follower_count"], "following": a["following_count"],
-                "tracks": a["track_count"], "playlists": a["playlist_count"],
-                "reposts": a["repost_count"], "likes": a["likes_count"],
-                "proxy": proxy_str,
-            })
-
-        db.close()
-        self.write_json({
-            "total_accounts": total, "active_accounts": active, "logged_in_accounts": logged_in,
-            "total_posts_scheduled": scheduled, "total_followers": followers,
-            "total_following": total_following, "total_tracks": total_tracks,
-            "total_reposts": total_reposts,
-            "pending_actions": pending_eng, "accounts_needing_reauth": reauth,
-            "total_proxies": total_proxies, "accounts_with_proxy": accounts_with_proxy,
-            "engagement_totals": engagement_totals,
-            "task_groups": task_groups_data,
-            "account_summaries": summaries,
-        })
-
-
-class ActivityLogHandler(APIHandler):
-    def get(self):
-        db = get_db()
-        rows = db.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 50").fetchall()
-        db.close()
-        self.write_json(rows_to_list(rows))
-
-
-class HealthHandler(APIHandler):
-    def get(self):
-        self.write_json({"status": "ok", "version": "3.0.0", "platform": "soundcloud"})
-
-
-# ── App ──────────────────────────────────────────────────────────────────────
-
-def make_app():
-    STATIC_DIR.mkdir(exist_ok=True)
-    return tornado.web.Application([
-        (r"/health", HealthHandler),
-        (r"/api/v1/proxies/?", ProxiesHandler),
-        (r"/api/v1/proxies/randomize", ProxyRandomizeHandler),
-        (r"/api/v1/proxies/clear", ProxyClearHandler),
-        (r"/api/v1/proxies/([a-f0-9-]+)", ProxyDetailHandler),
-        (r"/api/v1/accounts/?", AccountsHandler),
-        (r"/api/v1/accounts/login/bulk", BulkLoginHandler),
-        (r"/api/v1/accounts/health-check/all", HealthCheckAllHandler),
-        (r"/api/v1/accounts/([a-f0-9-]+)", AccountDetailHandler),
-        (r"/api/v1/accounts/([a-f0-9-]+)/login", AccountLoginHandler),
-        (r"/api/v1/accounts/([a-f0-9-]+)/health-check", AccountHealthCheckHandler),
-        (r"/api/v1/campaigns/?", CampaignsHandler),
-        (r"/api/v1/campaigns/([a-f0-9-]+)", CampaignDetailHandler),
-        (r"/api/v1/posts/?", PostsHandler),
-        (r"/api/v1/posts/([a-f0-9-]+)", PostDetailHandler),
-        (r"/api/v1/uploads/?", UploadsHandler),
-        (r"/api/v1/uploads/([a-f0-9-]+)", UploadDetailHandler),
-        (r"/api/v1/engagement/action", EngagementActionHandler),
-        (r"/api/v1/engagement/bulk", BulkEngagementHandler),
-        (r"/api/v1/engagement/stats", EngagementStatsHandler),
-        (r"/api/v1/task-groups/?", TaskGroupsHandler),
-        (r"/api/v1/task-groups/([a-f0-9-]+)", TaskGroupDetailHandler),
-        (r"/api/v1/analytics/dashboard", DashboardHandler),
-        (r"/api/v1/activity-logs/?", ActivityLogHandler),
-        (r"/(.*)", tornado.web.StaticFileHandler, {"path": str(STATIC_DIR), "default_filename": "index.html"}),
-    ], debug=True, autoreload=False, max_body_size=500*1024*1024)  # 500MB max upload
-
-
-if __name__ == "__main__":
-    init_db()
-    seed_real_accounts()
-    app = make_app()
-    app.listen(PORT, address="0.0.0.0")
-    logger.info("")
-    logger.info("  ╔══════════════════════════════════════════════╗")
-    logger.info(f"  ║  SoundCloud Hub v3.0 — port {PORT:<16}   ║")
-    logger.info(f"  ║  Dashboard:  http://localhost:{PORT:<15}║")
-    logger.info("  ╚══════════════════════════════════════════════╝")
-    logger.info("")
-    tornado.ioloop.IOLoop.current().start()
+        
