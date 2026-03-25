@@ -9,7 +9,7 @@ services:
     name: sc-hub-backend
     runtime: python
     plan: free          # upgrade to "starter" ($7/mo) for always-on + disk
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && playwright install chromium --with-deps
     startCommand: python server.py
 
     # Environment variables
