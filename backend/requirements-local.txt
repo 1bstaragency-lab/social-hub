@@ -1,14 +1,21 @@
 # Local dev requirements (no Docker/Postgres/Redis/Celery needed)
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
+
 sqlalchemy==2.0.27
 aiosqlite==0.20.0
+
 pydantic-settings==2.2.1
 pydantic==2.6.1
+
 passlib[bcrypt]==1.7.4
 cryptography==42.0.2
 PyJWT==2.8.0
+
 httpx==0.26.0
 APScheduler==3.10.4
 python-multipart==0.0.9
 python-dateutil==2.8.2
+
+# Browser automation (SoundCloud login)
+playwright==1.41.2
